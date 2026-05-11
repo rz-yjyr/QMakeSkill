@@ -1,0 +1,8 @@
+# User-specific build configuration
+build_config.bat
+
+# Build output
+build/
+*.exe
+*.obj
+*.pdb
