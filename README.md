@@ -1,81 +1,105 @@
-# Qt MSVC Build Skills for Trae IDE
+# Qt MSVC Build Skills for Kimi Code CLI
 
-一套用于 Trae IDE 的 Qt/MSVC 构建技能，支持自动检测开发环境并一键构建运行 Qt 项目。
+一套用于 [Kimi Code CLI](https://github.com/BinNong/kimi-code-cli) 的 Qt/MSVC 构建技能，支持自动检测开发环境、一键构建运行 Qt 项目，以及构建失败时的智能诊断修复。
 
 ## 包含的技能
 
 | 技能 | 功能 | 文件 |
 |------|------|------|
-| `qt-msvc-init` | 自动检测 Qt 和 MSVC 路径，生成配置文件 | `.trae/skills/qt-msvc-init/SKILL.md` |
-| `qt-msvc-build-run` | 读取配置并执行清理→构建→运行 | `.trae/skills/qt-msvc-build-run/SKILL.md` |
+| `qmake-init` | 自动扫描 Qt、MSVC、qmake、jom 等工具路径，生成配置 | `qmake-init/SKILL.md` |
+| `qmake-build` | 执行清理→构建→运行，支持内嵌脚本与外部 `build.bat` | `qmake-build/SKILL.md` |
+| `qmake-diagnose` | 构建失败时分析错误日志，匹配已知问题并提供修复方案 | `qmake-diagnose/SKILL.md` |
 
 ## 快速开始
 
 ### 1. 安装技能
 
-将本仓库的 `.trae/skills/` 目录复制到你的 Qt 项目根目录：
+将本仓库复制到 Kimi Code CLI 的 skills 目录：
 
-```
-your-project/
-├── .trae/
-│   └── skills/
-│       ├── qt-msvc-init/
-│       │   └── SKILL.md
-│       └── qt-msvc-build-run/
-│           └── SKILL.md
-└── YourProject.pro
+```powershell
+# 默认 skills 目录路径示例
+C:\Users\<用户名>\.agents\skills\
 ```
 
-### 2. 初始化配置（首次使用）
+安装后的目录结构：
 
-在 Trae IDE 中询问 AI：
+```
+skills/
+├── qmake-init/
+│   └── SKILL.md      # 环境扫描技能
+├── qmake-build/
+│   └── SKILL.md      # 构建技能
+└── qmake-diagnose/
+    └── SKILL.md      # 故障诊断技能
+```
+
+在 Qt 项目目录中，Kimi Code CLI 会自动识别并调用这些技能。
+
+### 2. 初始化环境（首次使用）
+
+在 Kimi Code CLI 中输入：
+
+```
+/qmake-init
+```
+
+或询问：
 
 > "初始化 Qt 构建环境"
 
-或手动创建 `init.bat`（内容见 `qt-msvc-init/SKILL.md`），然后运行：
-
-```batch
-init.bat
-```
-
-`init.bat` 会：
-- 自动检测 Qt 安装路径（支持 C/D/E 盘常见位置）
-- 自动检测 MSVC 环境（全盘扫描 + 常见路径）
-- 自动检测项目名称（从 `.pro` 文件）
-- 生成 `build_config.bat` 配置文件
+`qmake-init` 会：
+- 扫描常见路径（`C:\Qt`、`D:\Qt`、`E:\Qt` 等）查找 Qt 安装
+- 扫描 `Program Files\Microsoft Visual Studio` 查找 MSVC 环境
+- 基于 Qt 路径推导 jom 位置
+- 若发现多个候选，提示用户选择
+- 输出 JSON 格式的最终配置
 
 ### 3. 构建并运行项目
 
-在 Trae IDE 中询问 AI：
+在 Kimi Code CLI 中输入：
+
+```
+/qmake-build
+```
+
+或询问：
 
 > "构建并运行项目"
 
-或手动创建 `build.bat`（内容见 `qt-msvc-build-run/SKILL.md`），然后运行：
+`qmake-build` 会：
+- 检查当前目录下的 `build.bat`，若存在则直接执行
+- 若不存在，使用内嵌脚本执行：
+  - 终止正在运行的进程
+  - 清理旧构建目录
+  - 设置 MSVC 环境（`vcvars64.bat`）
+  - 执行 `qmake` + `jom` 编译
+  - 自动启动生成的可执行文件
 
-```batch
-build.bat
+### 4. 构建失败时诊断
+
+如果构建失败，`qmake-diagnose` 会自动或按需调用：
+
+```
+/qmake-diagnose
 ```
 
-`build.bat` 会：
-- 读取 `build_config.bat` 配置
-- 清理旧构建目录
-- 设置 MSVC 环境
-- 执行 qmake + jom 编译
-- 自动运行生成的可执行文件
+它会分析构建日志，匹配 9 类常见错误（如 `QMAKE_PROJECT_DEPTH` 配置错误、变量展开顺序错误、缺少 Qt 模块、MOC/UIC 错误、LNK 链接错误等），并提供：
+- **自动修复**：直接修改 `.pro` 或 `build.bat`
+- **修复建议**：说明根因和方案，等待用户确认
+- **排查引导**：对于未知错误，提供详细分析和建议
 
 ## 项目结构示例
 
 ```
 your-project/
-├── .trae/
-│   └── skills/
-│       ├── qt-msvc-init/
-│       │   └── SKILL.md      # 初始化技能
-│       └── qt-msvc-build-run/
-│           └── SKILL.md      # 构建技能
-├── init.bat                   # 从 SKILL.md 提取的初始化脚本
-├── build.bat                  # 从 SKILL.md 提取的构建脚本
-├── build_config.bat           # 生成的配置文件（用户特定，应加入 .gitignore）
+├── qmake-build/
+│   └── SKILL.md           # 构建技能（从本仓库复制）
+├── qmake-diagnose/
+│   └── SKILL.md           # 诊断技能（从本仓库复制）
+├── qmake-init/
+│   └── SKILL.md           # 初始化技能（从本仓库复制）
+├── build.bat              # 生成的构建脚本（可选，用户特定）
+├── build_config.bat       # 生成的配置文件（用户特定，应加入 .gitignore）
 ├── .gitignore
 └── YourProject.pro
 ```
@@ -88,32 +112,10 @@ build_config.bat
 
 # 构建输出
 build/
+*.exe
+*.obj
+*.pdb
 ```
-
-## 环境变量（可选）
-
-设置以下环境变量可跳过自动检测：
-
-| 变量 | 说明 | 示例 |
-|------|------|------|
-| `QT_DIR_ENV` | Qt 安装路径 | `D:\Qt\6.6.3\msvc2019_64` |
-| `VCVARS_PATH_ENV` | vcvars64.bat 路径 | `C:\Program Files\...\vcvars64.bat` |
-
-## 自动检测逻辑
-
-### Qt 检测顺序
-
-1. 环境变量 `QT_DIR_ENV`
-2. 常见路径：`C:\Qt\*\msvc2019_64`、`D:\Qt\*\msvc2022_64` 等
-3. 通配符搜索：`\Qt\*\msvc*_64`
-4. 交互式输入
-
-### MSVC 检测顺序
-
-1. 环境变量 `VCVARS_PATH_ENV`
-2. **动态全盘扫描**：遍历所有可用磁盘，搜索 `Program Files\Microsoft Visual Studio\*\*\VC\Auxiliary\Build\vcvars64.bat`
-3. **硬编码回退路径**：常见 VS2019/VS2022 安装位置
-4. 交互式输入
 
 ## 系统要求
 
@@ -122,36 +124,17 @@ build/
 - Microsoft Visual Studio 2019/2022
 - jom（随 Qt Creator 安装）
 
-## 手动配置（不使用 init.bat）
-
-如果你不想使用自动检测，可以直接编辑 `build.bat` 中的手动配置部分：
-
-```batch
-set QT_DIR=D:\Qt\6.6.3\msvc2019_64
-set VCVARS_PATH=D:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat
-set PROJECT_NAME=YourProject
-```
-
-## 故障排除
+## 故障排除速查
 
 | 问题 | 解决方案 |
 |------|---------|
-| 找不到 Qt | 设置 `QT_DIR_ENV` 环境变量 |
-| 找不到 MSVC | 设置 `VCVARS_PATH_ENV` 环境变量 |
-| 找不到 .pro 文件 | 确保 `init.bat` 和 `.pro` 文件在同一目录 |
-| 构建失败 | 检查 Qt 和 MSVC 版本是否匹配（如 msvc2019_64） |
-
-## 分享与安装
-
-### 分享给他人
-
-1. 将本仓库推送到 GitHub
-2. 他人克隆/下载后，复制 `.trae/skills/` 到他们的项目
-3. 运行 `init.bat` 生成他们自己的配置
-
-### 作为项目的一部分
-
-将 `.trae/skills/` 目录加入版本控制（不包含 `build_config.bat`），这样团队成员可以直接使用。
+| 找不到 Qt | 运行 `/qmake-init` 重新扫描，或设置 `QT_DIR_ENV` 环境变量 |
+| 找不到 MSVC | 运行 `/qmake-init` 重新扫描，或设置 `VCVARS_PATH_ENV` 环境变量 |
+| `Error: dependent ... does not exist` | 检查 `.pro` 中是否有 `QMAKE_PROJECT_DEPTH = 0`，尝试删除或添加该项 |
+| `Error: exe not found` 但文件已生成 | 检查 `build.bat` 中 `EXE_PATH` 是否定义在 `PRO_FILE` 赋值之后 |
+| `fatal error C1083` | 缺少头文件或 Qt 模块，运行 `/qmake-diagnose` 自动分析 |
+| `error LNK2019` | 缺少库依赖或实现，检查 `.pro` 的 `LIBS` 和源文件完整性 |
+| `cl` 不是内部或外部命令 | MSVC 环境未正确加载，检查 `vcvars64.bat` 路径 |
 
 ## License
 
