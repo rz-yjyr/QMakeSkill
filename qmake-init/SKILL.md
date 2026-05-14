@@ -1,89 +1,107 @@
 ---
 name: "qmake-init"
-description: "自动扫描系统并定位 Qt、MSVC、qmake、jom 等编译工具路径。若发现多个候选路径，提示用户选择。供 qmake-build 或其他构建技能动态获取环境配置。"
+description: "自动扫描系统并定位 Qt、MSVC、qmake、jom 等编译工具路径。若发现多个候选路径，提示用户选择。在当前工作目录生成 qmake-build 所需的 qmake-build.bat 脚本。"
 ---
 
 # Qt 环境扫描技能
 
 ## 用途
-自动扫描系统中 Qt 和 MSVC 编译工具的安装位置，动态发现构建所需的工具链路径。当存在多个候选安装时，提示用户进行选择，替代硬编码路径。
+
+使用 PowerShell 指令自动扫描系统中 Qt 和 MSVC 编译工具的安装位置，动态发现构建所需的工具链路径。当存在多个候选安装时，提示用户进行选择，替代硬编码路径。扫描完成后，在当前工作目录生成 `qmake-build.bat` 脚本，供 `qmake-build` 技能调用。
 
 ## 触发时机
+
 - 构建前需要确认工具链位置时
 - 硬编码路径失效（如 Qt/MSVC 升级或安装在其他磁盘）时
 - 用户要求查找 Qt/MSVC 环境时
-
-## 扫描逻辑
-
-### 1. 扫描 Qt 与 qmake
-检查以下常见位置的 `bin\qmake.exe`：
-- `C:\Qt\*\msvc2019_64\bin\qmake.exe`
-- `D:\Qt\*\msvc2019_64\bin\qmake.exe`
-- `E:\Qt\*\msvc2019_64\bin\qmake.exe`
-- 版本目录通配匹配（如 `6.6.3`、`6.7.*` 等）
-
-### 2. 扫描 MSVC vcvars64.bat
-检查以下常见位置：
-- `C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat`
-- `C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat`
-- `C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat`
-- `C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat`
-- `C:\Program Files\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat`
-- 以及 `D:\Program Files\...` 等其他盘符
-
-### 3. 扫描 jom
-基于找到的 Qt 路径推导：
-- `<Qt 安装根目录>\Tools\QtCreator\bin\jom\jom.exe`
-- 若 Qt 路径为 `D:\Qt\6.6.3\msvc2019_64`，则 jom 通常在 `D:\Qt\Tools\QtCreator\bin\jom\jom.exe`
+- 当前目录下不存在 `qmake-build.bat`，且需要生成构建脚本时
 
 ## 执行步骤
 
 ### 步骤 1：收集所有候选路径
 
-使用 PowerShell 执行扫描，收集所有匹配项（不要只取第一个）：
+使用 PowerShell 执行以下扫描脚本，收集所有匹配项（不要只取第一个）：
 
 ```powershell
-# 扫描所有 qmake
-$qmakeList = @("C:\Qt", "D:\Qt", "E:\Qt") | ForEach-Object {
-    if (Test-Path $_) {
-        Get-ChildItem "$($_)\*\msvc2019_64\bin\qmake.exe" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty FullName
+# ========================
+# 1. 扫描所有 qmake
+# ========================
+$qmakeList = @()
+foreach ($drive in @("C:\Qt", "D:\Qt", "E:\Qt")) {
+    if (Test-Path $drive) {
+        $items = @(Get-ChildItem "$drive\*\msvc*_64\bin\qmake.exe" -ErrorAction SilentlyContinue)
+        $items += @(Get-ChildItem "$drive\*\msvc2019_64\bin\qmake.exe" -ErrorAction SilentlyContinue)
+        $qmakeList += $items | Select-Object -ExpandProperty FullName
     }
 }
+$qmakeList = $qmakeList | Select-Object -Unique
 
-# 扫描所有 vcvars64.bat
+# ========================
+# 2. 扫描所有 vcvars64.bat
+# ========================
 $vcvarsList = @(
     "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
     "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
     "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
     "C:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
     "C:\Program Files\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat",
+    "C:\Program Files\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
+    "C:\Program Files\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvars64.bat",
+    "C:\Program Files\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
     "D:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat",
     "D:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
-    "D:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+    "D:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat",
+    "D:\Program Files\Microsoft Visual Studio\2022\BuildTools\VC\Auxiliary\Build\vcvars64.bat",
+    "D:\Program Files\Microsoft Visual Studio\2019\Community\VC\Auxiliary\Build\vcvars64.bat",
+    "D:\Program Files\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvars64.bat",
+    "D:\Program Files\Microsoft Visual Studio\2019\Professional\VC\Auxiliary\Build\vcvars64.bat",
+    "D:\Program Files\Microsoft Visual Studio\2019\BuildTools\VC\Auxiliary\Build\vcvars64.bat"
 ) | Where-Object { Test-Path $_ }
 
-# 扫描所有 jom（基于 Qt 路径推导）
+# ========================
+# 3. 扫描所有 jom（基于 Qt 路径推导）
+# ========================
 $jomList = @()
-$qmakeList | ForEach-Object {
-    $qtDir = Split-Path (Split-Path (Split-Path $_)) -Parent
-    $qtRoot = Split-Path $qtDir
-    $jomPath = Join-Path $qtRoot "Tools\QtCreator\bin\jom\jom.exe"
-    if (Test-Path $jomPath) { $jomList += $jomPath }
-    else {
-        $qtRoot2 = Split-Path (Split-Path $qtDir)
-        $jomPath2 = Join-Path $qtRoot2 "Tools\QtCreator\bin\jom\jom.exe"
-        if (Test-Path $jomPath2) { $jomList += $jomPath2 }
+if ($qmakeList -and $qmakeList.Count -gt 0) {
+    $qmakeList | ForEach-Object {
+        $qtBinDir = Split-Path $_ -Parent
+        $qtDir = Split-Path $qtBinDir -Parent
+        $qtRoot = Split-Path $qtDir -Parent
+        # 常见 jom 路径推导
+        $jomCandidates = @()
+        if ($qtRoot) {
+            $jomCandidates += (Join-Path $qtRoot "Tools\QtCreator\bin\jom\jom.exe")
+            $parentQtRoot = Split-Path $qtRoot -ErrorAction SilentlyContinue
+            if ($parentQtRoot) {
+                $jomCandidates += (Join-Path $parentQtRoot "Tools\QtCreator\bin\jom\jom.exe")
+            }
+        }
+        if ($qtDir) {
+            $jomCandidates += (Join-Path $qtDir "..\..\Tools\QtCreator\bin\jom\jom.exe")
+        }
+        foreach ($jomPath in $jomCandidates) {
+            $resolved = Resolve-Path $jomPath -ErrorAction SilentlyContinue
+            if ($resolved -and (Test-Path $resolved)) {
+                $jomList += $resolved.Path
+            }
+        }
     }
 }
 $jomList = $jomList | Select-Object -Unique
 
+# ========================
 # 输出收集结果
-Write-Host "=== qmake 候选 ==="
-$qmakeList | ForEach-Object { Write-Host "  $_" }
-Write-Host "=== vcvars64.bat 候选 ==="
-$vcvarsList | ForEach-Object { Write-Host "  $_" }
-Write-Host "=== jom 候选 ==="
-$jomList | ForEach-Object { Write-Host "  $_" }
+# ========================
+Write-Host ""
+Write-Host "=== qmake 候选 ===" -ForegroundColor Cyan
+if ($qmakeList) { $qmakeList | ForEach-Object { Write-Host "  $_" } } else { Write-Host "  (未找到)" }
+Write-Host ""
+Write-Host "=== vcvars64.bat 候选 ===" -ForegroundColor Cyan
+if ($vcvarsList) { $vcvarsList | ForEach-Object { Write-Host "  $_" } } else { Write-Host "  (未找到)" }
+Write-Host ""
+Write-Host "=== jom 候选 ===" -ForegroundColor Cyan
+if ($jomList) { $jomList | ForEach-Object { Write-Host "  $_" } } else { Write-Host "  (未找到)" }
+Write-Host ""
 ```
 
 ### 步骤 2：处理多候选情况
@@ -92,7 +110,7 @@ $jomList | ForEach-Object { Write-Host "  $_" }
 - **若某类工具找到多个路径**：列出所有候选，**提示用户进行选择**。
 - **若某类工具未找到**：报告未找到，并询问用户是否手动指定。
 
-使用 AskUserQuestion 呈现选项（示例）：
+使用 `AskUserQuestion` 呈现选项（示例）：
 
 ```
 发现多个 Qt 版本，请选择：
@@ -103,9 +121,126 @@ $jomList | ForEach-Object { Write-Host "  $_" }
 
 同理处理 MSVC 和 jom。
 
-### 步骤 3：输出最终配置
+### 步骤 3：生成 qmake-build.bat 脚本
 
-用户选择完成后，输出最终确定的 JSON 配置：
+用户选择完成后，在当前工作目录（`%CD%`）生成 `qmake-build.bat` 脚本，脚本内容使用用户选择的动态路径：
+
+```batch
+@echo off
+chcp 65001 >nul
+
+REM ========================================
+REM Qt Build Script (Auto-generated by qmake-init)
+REM ========================================
+set QT_DIR={{QT_DIR}}
+set VCVARS_PATH={{VCVARS_PATH}}
+set JOM={{JOM}}
+set BUILD_DIR_NAME=build
+
+REM ========================================
+REM Internal Configuration
+REM ========================================
+set PROJECT_DIR=%CD%\
+set BUILD_DIR=%PROJECT_DIR%%BUILD_DIR_NAME%
+set QMAKE=%QT_DIR%\bin\qmake.exe
+
+REM ========================================
+REM Find .pro file
+REM ========================================
+set "PRO_FILE="
+for %%f in (%PROJECT_DIR%*.pro) do if not defined PRO_FILE set "PRO_FILE=%%~nxf"
+if not defined PRO_FILE (
+    echo Error: No .pro file found in %PROJECT_DIR%
+    exit /b 1
+)
+echo Found project: %PRO_FILE%
+
+REM EXE_PATH 必须在 PRO_FILE 赋值后定义，否则批处理解析时展开为空
+set EXE_PATH=%BUILD_DIR%\release\%PRO_FILE:.pro=%.exe
+
+REM ========================================
+REM Step 0: Kill running process
+REM ========================================
+echo [0/4] Killing running process...
+taskkill /F /IM %PRO_FILE:.pro=%.exe >nul 2>&1
+echo     OK
+echo.
+
+REM ========================================
+REM Step 1: Clean
+REM ========================================
+echo [1/4] Cleaning...
+if exist "%BUILD_DIR%" (
+    cd /d "%BUILD_DIR%"
+    if exist "Makefile" "%JOM%" clean >nul 2>&1
+    cd /d "%PROJECT_DIR%"
+    rmdir /s /q "%BUILD_DIR%"
+)
+echo     OK
+echo.
+
+REM ========================================
+REM Step 2: Setup Environment
+REM ========================================
+echo [2/4] Setting up MSVC environment...
+if not exist "%VCVARS_PATH%" (
+    echo     Error: vcvars64.bat not found
+    exit /b 1
+)
+call "%VCVARS_PATH%" >nul
+echo     OK
+echo.
+
+REM ========================================
+REM Step 3: Build
+REM ========================================
+echo [3/4] Building...
+mkdir "%BUILD_DIR%" >nul 2>&1
+cd /d "%BUILD_DIR%"
+
+"%QMAKE%" "%PROJECT_DIR%%PRO_FILE%"
+if errorlevel 1 (
+    echo     Error: qmake failed
+    exit /b 1
+)
+
+"%JOM%"
+if errorlevel 1 (
+    echo     Error: jom failed
+    exit /b 1
+)
+echo     OK
+echo.
+
+REM ========================================
+REM Step 4: Run
+REM ========================================
+echo [4/4] Starting application...
+if exist "%EXE_PATH%" (
+    start "" "%EXE_PATH%"
+    echo     OK
+) else (
+    echo     Error: exe not found
+    exit /b 1
+)
+
+echo.
+echo ========================================
+echo Build and run completed successfully
+echo ========================================
+```
+
+将上述模板中的占位符替换为实际路径：
+- `{{QT_DIR}}` → 用户选择的 Qt 目录（如 `D:\Qt\6.6.3\msvc2019_64`）
+- `{{VCVARS_PATH}}` → 用户选择的 vcvars64.bat 路径
+- `{{JOM}}` → 用户选择的 jom 路径
+
+写入当前工作目录的 `qmake-build.bat` 文件后，向用户报告：
+> 已在当前目录生成 `qmake-build.bat`，可直接运行或通过 `/qmake-build` 调用。
+
+### 步骤 4：输出最终配置
+
+以 JSON 格式输出最终确定的工具路径配置：
 
 ```json
 {
@@ -116,19 +251,51 @@ $jomList | ForEach-Object { Write-Host "  $_" }
 }
 ```
 
+## 完整扫描与生成流程示例
+
+```powershell
+# 1. 扫描
+# （执行步骤 1 的 PowerShell 脚本）
+
+# 2. 用户选择（如有多个候选）
+# （通过 AskUserQuestion 交互）
+
+# 3. 生成 qmake-build.bat
+$batContent = @'
+@echo off
+chcp 65001 >nul
+set QT_DIR=SELECTED_QT_DIR
+set VCVARS_PATH=SELECTED_VCVARS
+set JOM=SELECTED_JOM
+set BUILD_DIR_NAME=build
+set PROJECT_DIR=%CD%\
+set BUILD_DIR=%PROJECT_DIR%%BUILD_DIR_NAME%
+set QMAKE=%QT_DIR%\bin\qmake.exe
+...
+'@
+
+$utf8NoBom = [System.Text.UTF8Encoding]::new($false)
+[System.IO.File]::WriteAllText("qmake-build.bat", $batContent, $utf8NoBom)
+```
+
 ## 输出格式
 
 扫描完成后返回 JSON 格式路径配置：
+
 ```json
 {
   "QT_DIR": "<用户选择的 Qt 目录>",
   "QMAKE": "<用户选择的 qmake 路径>",
   "VCVARS_PATH": "<用户选择的 vcvars64.bat 路径>",
-  "JOM": "<用户选择的 jom 路径>"
+  "JOM": "<用户选择的 jom 路径>",
+  "BUILD_BAT": "<当前工作目录>\\qmake-build.bat"
 }
 ```
 
 ## 备注
+
 - 若某项未找到，对应字段返回 `null`，并提示用户手动输入
 - 支持 Qt 6.x 和 Qt 5.x 的自动识别
-- 用户选择的结果可保存供后续 `qmake-build` 技能使用
+- 生成的 `qmake-build.bat` 使用 `set` 定义路径，不依赖 `%~dp0`，可在任意目录执行
+- `qmake-build` 技能执行时，优先调用当前目录下的 `qmake-build.bat`；若不存在则回退到内嵌脚本
+- 如果用户更换了 Qt/MSVC 版本，重新运行 `qmake-init` 即可更新 `qmake-build.bat`
